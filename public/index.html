@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube 批量下載器</title>
+    <style>
+        body {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        textarea {
+            height: 200px;
+            padding: 10px;
+            width: 100%;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: vertical;
+            box-sizing: border-box;
+            transition: border-color 0.3s ease;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 5px rgba(76,175,80,0.2);
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        input[type="text"] {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 5px rgba(76,175,80,0.2);
+        }
+        .result {
+            margin-top: 20px;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #f0f0f0;
+            padding: 3px;
+            border-radius: 3px;
+            margin: 5px 0;
+        }
+        .progress-bar > div {
+            background-color: #4CAF50;
+            height: 20px;
+            border-radius: 3px;
+            transition: width 0.3s ease-in-out;
+        }
+        .download-item {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+            transition: transform 0.2s ease;
+        }
+        .download-item:hover {
+            transform: translateX(5px);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        h3 {
+            color: #444;
+            margin-bottom: 10px;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .download-url {
+            font-family: monospace;
+            word-break: break-all;
+            margin-bottom: 10px;
+            color: #666;
+        }
+        .download-title {
+            font-weight: bold;
+            margin: 5px 0;
+            color: #333;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-badge.waiting {
+            background-color: #f0f0f0;
+            color: #666;
+        }
+        .status-badge.preparing {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-badge.downloading {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        .status-badge.success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-badge.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .error-message {
+            color: #dc3545;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+        .progress-text {
+            font-size: 12px;
+            color: #666;
+            text-align: right;
+            margin-top: 2px;
+        }
+        .download-progress {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>YouTube 批量下載器</h1>
+        
+        <div>
+            <h3>下載目錄設定</h3>
+            <div class="input-group">
+                <input type="text" id="downloadPath" style="width: 80%">
+                <button onclick="updateConfig()">更新設定</button>
+            </div>
+        </div>
+
+        <div>
+            <h3>輸入 YouTube 連結</h3>
+            <p>每行一個連結</p>
+            <textarea id="urls" placeholder="https://www.youtube.com/watch?v=..."></textarea>
+            <div style="text-align: center; margin-top: 15px;">
+                <button onclick="startDownload()">開始下載</button>
+            </div>
+        </div>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        // 載入配置
+        async function loadConfig() {
+            const response = await fetch('/api/config');
+            const config = await response.json();
+            document.getElementById('downloadPath').value = config.downloadPath;
+        }
+
+        // 更新配置
+        async function updateConfig() {
+            const downloadPath = document.getElementById('downloadPath').value;
+            await fetch('/api/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ downloadPath })
+            });
+            alert('設定已更新');
+        }
+
+        // 開始下載
+        async function startDownload() {
+            const urlsText = document.getElementById('urls').value;
+            const urls = urlsText.split('\n').filter(url => url.trim());
+            
+            if (urls.length === 0) {
+                alert('請輸入至少一個 URL');
+                return;
+            }
+
+            const resultDiv = document.getElementById('result');
+            
+            // 先為每個 URL 創建固定的 div
+            resultDiv.innerHTML = urls.map(url => `
+                <div class="download-item" id="download-${btoa(url)}">
+                    <div class="download-url">${url}</div>
+                    <div class="download-status">
+                        <span class="status-badge waiting">⏳ 等待中</span>
+                    </div>
+                    <div class="download-progress"></div>
+                </div>
+            `).join('');
+
+            try {
+                const eventSource = new EventSource('/api/download-status');
+                
+                eventSource.onmessage = (event) => {
+                    const results = JSON.parse(event.data);
+                    
+                    results.forEach(result => {
+                        const downloadDiv = document.getElementById(`download-${btoa(result.url)}`);
+                        if (!downloadDiv) return;
+
+                        const statusDiv = downloadDiv.querySelector('.download-status');
+                        const progressDiv = downloadDiv.querySelector('.download-progress');
+
+                        let statusHtml = '';
+                        let progressHtml = '';
+
+                        switch (result.status) {
+                            case 'preparing':
+                                statusHtml = `<span class="status-badge preparing">🔄 準備中</span>`;
+                                break;
+                            case 'downloading':
+                                statusHtml = `
+                                    <span class="status-badge downloading">📥 正在下載</span>
+                                    <div class="download-title">${result.title}</div>
+                                `;
+                                progressHtml = `
+                                    <div class="progress-bar">
+                                        <div style="width: ${result.progress}%"></div>
+                                    </div>
+                                    <div class="progress-text">${result.progress.toFixed(1)}%</div>
+                                `;
+                                break;
+                            case 'success':
+                                statusHtml = `
+                                    <span class="status-badge success">✅ 已完成</span>
+                                    <div class="download-title">${result.title}</div>
+                                `;
+                                progressHtml = `
+                                    <div class="progress-bar">
+                                        <div style="width: 100%"></div>
+                                    </div>
+                                    <div class="progress-text">100%</div>
+                                `;
+                                break;
+                            case 'error':
+                                statusHtml = `
+                                    <span class="status-badge error">❌ 下載失敗</span>
+                                    <div class="error-message">${result.message}</div>
+                                `;
+                                break;
+                        }
+
+                        statusDiv.innerHTML = statusHtml;
+                        progressDiv.innerHTML = progressHtml;
+                    });
+                };
+
+                eventSource.onerror = () => {
+                    eventSource.close();
+                };
+
+                // 發送下載請求
+                await fetch('/api/download', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ urls })
+                });
+
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="error">處理時發生錯誤: ${err.message}</div>`;
+            }
+        }
+
+        // 頁面載入時載入配置
+        loadConfig();
+    </script>
+</body>
+</html> 
